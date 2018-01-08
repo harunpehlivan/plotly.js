@@ -1118,7 +1118,7 @@ describe('Test gl2d plots', function() {
     });
 });
 
-describe('Test removal of gl contexts', function() {
+xdescribe('Test removal of gl contexts', function() {
     var gd;
 
     beforeEach(function() {
