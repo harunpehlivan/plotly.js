@@ -1548,38 +1548,38 @@ describe('Test gl2d plots', function() {
         .then(done);
     });
 
-    it('@noCI should be able to toggle visibility', function(done) {
+    it('should be able to toggle visibility', function(done) {
         var _mock = Lib.extendDeep({}, mock);
+        var _delay = delay(200);
 
         _mock.data[0].line.width = 4;
 
         Plotly.plot(gd, _mock)
-        .then(delay(20))
+        .then(_delay)
         .then(function() {
             return Plotly.restyle(gd, 'visible', 'legendonly');
         })
+        .then(_delay)
         .then(function() {
-            //expect(readPixel(gd.querySelector('.gl-canvas-context'), 108, 102)[0]).toBe(0);
-            //
             // TODO legendonly should NOT remove gl context
             // for fast legend item toggle
             expect(gd.querySelector('.gl-canvas-context')).toBe(null);
 
             return Plotly.restyle(gd, 'visible', true);
         })
-        .then(delay(20))
+        .then(_delay)
         .then(function() {
             expect(readPixel(gd.querySelector('.gl-canvas-context'), 108, 102)[0]).not.toBe(0);
 
             return Plotly.restyle(gd, 'visible', false);
         })
-        .then(delay(20))
+        .then(_delay)
         .then(function() {
             expect(gd.querySelector('.gl-canvas-context')).toBe(null);
 
             return Plotly.restyle(gd, 'visible', true);
         })
-        .then(delay(20))
+        .then(_delay)
         .then(function() {
             expect(readPixel(gd.querySelector('.gl-canvas-context'), 108, 102)[0]).not.toBe(0);
         })
