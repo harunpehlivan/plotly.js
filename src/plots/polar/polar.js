@@ -578,7 +578,11 @@ proto.updateMainDrag = function(fullLayout, polarLayout) {
     var r0, r1;
     // first (r1 - r0) dist greater than MINZOOM,
     // determines whether 'small' zoomboxes get filled from center or outer edge
-    var drdir;
+    var dr0;
+    // did we cross the origin on mouse move?
+    var didCrossOrigin;
+    // did we reach the min zoom constant on mouse move (that turns on 2-sided re-range)?
+    var didReachMinZoom;
     // zoombox persistent quantities
     var path0, dimmed, lum;
     // zoombox, corners elements
@@ -598,10 +602,33 @@ proto.updateMainDrag = function(fullLayout, polarLayout) {
         return [r * Math.cos(a), r * Math.sin(-a)];
     }
 
+    function pathCorner(x, y) {
+        var clen = constants.cornerLen;
+        var chw = constants.cornerHalfWidth;
+
+        var r = xy2r(x, y);
+        var a = xy2a(x, y);
+        var da = clen / r / 2;
+        var am = a - da;
+        var ap = a + da;
+        var rb = Math.max(0, Math.min(r, radius));
+        var rm = rb - chw;
+        var rp = rb + chw;
+
+        return 'M' + ra2xy(rm, am) +
+            'A' + [rm, rm] + ' 0,0,0 ' + ra2xy(rm, ap) +
+            'L' + ra2xy(rp, ap) +
+            'A' + [rp, rp] + ' 0,0,1 ' + ra2xy(rp, am) +
+            'Z';
+    }
+
     function zoomPrep() {
         r0 = null;
         r1 = null;
-        drdir = null;
+        dr0 = null;
+        didCrossOrigin = null;
+        didReachMinZoom = null;
+
         path0 = pathSectorClosed(radius, sector);
         dimmed = false;
 
@@ -617,46 +644,60 @@ proto.updateMainDrag = function(fullLayout, polarLayout) {
     function zoomMove(dx, dy) {
         var x1 = x0 + dx;
         var y1 = y0 + dy;
+
+        // raw radial distance from circle center at drag start (0), move (1)
         var rr0 = xy2r(x0, y0);
         var rr1 = xy2r(x1, y1);
 
-        var drr = rr1 - rr0;
-        if(!drdir) drdir = drr;
-
-        if(Math.abs(drr) < MINZOOM) {
-            if(drdir > 0) rr0 = 0;
-            else if(drdir < 0) rr0 = radius;
-            else return;
-        }
-
-        var crossedOrigin = (
+        // a few important values combine with their non-underscore counterpart in the outer scope
+        // that determine the behavior under mouse move:
+        var _dr0 = rr1 - rr0;
+        var _didReachMinZoom = Math.abs(_dr0) > MINZOOM;
+        var _didCrossOrigin = (
             sign(x0 - cxx) * sign(x1 - cxx) === -1 &&
             sign(cyy - y0) * sign(cyy - y1) === -1
         );
-        if(crossedOrigin) rr0 = 0;
 
+        // update scope values when they turn truthy
+        if(!dr0) dr0 = _dr0;
+        if(!didReachMinZoom) didReachMinZoom = _didReachMinZoom;
+        if(!didCrossOrigin) didCrossOrigin = _didCrossOrigin;
+
+        // leave of a few ways to cancel zoom:
+        //
+        // - if rr0 === rr1,
+        // - if we did previously cross the origin and then came back to it,
+        // - if we did reach min zoom and then moved back in the opposite direction
+        //   reaching the mouse down radial distance.
+        var canceled = false;
+
+        if(!_didReachMinZoom && !dr0) {
+            canceled = true;
+        } else if(didCrossOrigin) {
+            if(!_didCrossOrigin) canceled = true;
+        } else if(didReachMinZoom && sign(_dr0) !== sign(dr0)) {
+            canceled = true;
+        }
+
+        // alter rr0
+        if(!_didReachMinZoom) {
+            if(dr0 > 0) rr0 = 0;
+            else if(dr0 < 0) rr0 = radius;
+        }
+        if(didCrossOrigin) rr0 = 0;
+
+        // make sure r0 > r1 always!
         r0 = Math.min(rr0, rr1);
         r1 = Math.min(Math.max(rr0, rr1), radius);
 
         var path1;
         var cpath;
 
-        if(r1 - r0 > MINZOOM || crossedOrigin) {
+        if(!canceled && r1 - r0 > MINZOOM) {
             path1 = path0 + pathSectorClosed(r1, sector) + pathSectorClosed(r0, sector);
-
-            var a = xy2a(x1, y1);
-            var da = clen / rr1 / 2;
-            var am = a - da;
-            var ap = a + da;
-            var rb = Math.min(rr1, radius);
-            var rm = rb - chw;
-            var rp = rb + chw;
-
-            cpath = 'M' + ra2xy(rm, am) +
-                'A' + [rm, rm] + ' 0,0,0 ' + ra2xy(rm, ap) +
-                'L' + ra2xy(rp, ap) +
-                'A' + [rp, rp] + ' 0,0,1 ' + ra2xy(rp, am) +
-                'Z';
+            cpath = (_didReachMinZoom && !didCrossOrigin) ?
+                pathCorner(x0, y0) + pathCorner(x1, y1) :
+                pathCorner(x1, y1);
         } else {
             r0 = null;
             r1 = null;
