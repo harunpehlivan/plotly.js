@@ -68,6 +68,13 @@ if(!pattern) {
 // gl2d have limited image-test support
 if(pattern === 'gl2d_*') {
 
+    mockList = mockList.filter(function(m) {
+        return (
+            m !== 'gl2d_heatmapgl' &&
+            m !== 'gl2d_pointcloud-basic'
+        );
+    });
+
     if(!isInQueue) {
         console.log('WARN: Running gl2d image tests in batch may lead to unwanted results\n');
     }
