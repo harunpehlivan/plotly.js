@@ -547,6 +547,7 @@ proto.updateMainDrag = function(fullLayout, polarLayout) {
     var layers = _this.layers;
     var zoomlayer = fullLayout._zoomlayer;
     var MINZOOM = constants.MINZOOM;
+    var OFFEDGE = constants.OFFEDGE;
     var radius = _this.radius;
     var cx = _this.cx;
     var cy = _this.cy;
@@ -576,13 +577,6 @@ proto.updateMainDrag = function(fullLayout, polarLayout) {
     var x0, y0;
     // radial distance from circle center at drag start (0), move (1)
     var r0, r1;
-    // first (r1 - r0) dist greater than MINZOOM,
-    // determines whether 'small' zoomboxes get filled from center or outer edge
-    var dr0;
-    // did we cross the origin on mouse move?
-    var didCrossOrigin;
-    // did we reach the min zoom constant on mouse move (that turns on 2-sided re-range)?
-    var didReachMinZoom;
     // zoombox persistent quantities
     var path0, dimmed, lum;
     // zoombox, corners elements
@@ -602,12 +596,12 @@ proto.updateMainDrag = function(fullLayout, polarLayout) {
         return [r * Math.cos(a), r * Math.sin(-a)];
     }
 
-    function pathCorner(x, y) {
+    function pathCorner(r, a) {
         var clen = constants.cornerLen;
         var chw = constants.cornerHalfWidth;
 
-        var r = xy2r(x, y);
-        var a = xy2a(x, y);
+        if(r === 0) return pathSectorClosed(2 * chw, sector);
+
         var da = clen / r / 2;
         var am = a - da;
         var ap = a + da;
@@ -625,10 +619,6 @@ proto.updateMainDrag = function(fullLayout, polarLayout) {
     function zoomPrep() {
         r0 = null;
         r1 = null;
-        dr0 = null;
-        didCrossOrigin = null;
-        didReachMinZoom = null;
-
         path0 = pathSectorClosed(radius, sector);
         dimmed = false;
 
@@ -644,60 +634,35 @@ proto.updateMainDrag = function(fullLayout, polarLayout) {
     function zoomMove(dx, dy) {
         var x1 = x0 + dx;
         var y1 = y0 + dy;
-
-        // raw radial distance from circle center at drag start (0), move (1)
         var rr0 = xy2r(x0, y0);
-        var rr1 = xy2r(x1, y1);
+        var rr1 = Math.min(xy2r(x1, y1), radius);
+        var a0 = xy2a(x0, y0);
+        var a1 = xy2a(x1, y1);
 
-        // a few important values combine with their non-underscore counterpart in the outer scope
-        // that determine the behavior under mouse move:
-        var _dr0 = rr1 - rr0;
-        var _didReachMinZoom = Math.abs(_dr0) > MINZOOM;
-        var _didCrossOrigin = (
-            sign(x0 - cxx) * sign(x1 - cxx) === -1 &&
-            sign(cyy - y0) * sign(cyy - y1) === -1
-        );
-
-        // update scope values when they turn truthy
-        if(!dr0) dr0 = _dr0;
-        if(!didReachMinZoom) didReachMinZoom = _didReachMinZoom;
-        if(!didCrossOrigin) didCrossOrigin = _didCrossOrigin;
-
-        // leave of a few ways to cancel zoom:
-        //
-        // - if rr0 === rr1,
-        // - if we did previously cross the origin and then came back to it,
-        // - if we did reach min zoom and then moved back in the opposite direction
-        //   reaching the mouse down radial distance.
-        var canceled = false;
-
-        if(!_didReachMinZoom && !dr0) {
-            canceled = true;
-        } else if(didCrossOrigin) {
-            if(!_didCrossOrigin) canceled = true;
-        } else if(didReachMinZoom && sign(_dr0) !== sign(dr0)) {
-            canceled = true;
-        }
-
-        // alter rr0
-        if(!_didReachMinZoom) {
-            if(dr0 > 0) rr0 = 0;
-            else if(dr0 < 0) rr0 = radius;
-        }
-        if(didCrossOrigin) rr0 = 0;
-
-        // make sure r0 > r1 always!
-        r0 = Math.min(rr0, rr1);
-        r1 = Math.min(Math.max(rr0, rr1), radius);
+        // starting or ending drag near center (outer edge),
+        // clamps radial distance at origin (at r=radius)
+        if(rr0 < OFFEDGE) rr0 = 0;
+        else if((radius - rr0) < OFFEDGE) rr0 = radius;
+        else if(rr1 < OFFEDGE) rr1 = 0;
+        else if((radius - rr1) < OFFEDGE) rr1 = radius;
 
         var path1;
         var cpath;
 
-        if(!canceled && r1 - r0 > MINZOOM) {
+        if(Math.abs(rr1 - rr0) > MINZOOM) {
+            // make sure r0 < r1,
+            // to get correct fill pattern in path1 below
+            if(rr0 < rr1) {
+                r0 = rr0;
+                r1 = rr1;
+            } else {
+                r0 = rr1;
+                r1 = rr0;
+                a1 = [a0, a0 = a1][0]; // swap a0 and a1
+            }
+
             path1 = path0 + pathSectorClosed(r1, sector) + pathSectorClosed(r0, sector);
-            cpath = (_didReachMinZoom && !didCrossOrigin) ?
-                pathCorner(x0, y0) + pathCorner(x1, y1) :
-                pathCorner(x1, y1);
+            cpath = pathCorner(r0, a0) + pathCorner(r1, a1);
         } else {
             r0 = null;
             r1 = null;
